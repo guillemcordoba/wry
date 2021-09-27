@@ -155,45 +155,52 @@ impl InnerWebView {
         }
 
         // send response
-        let final_request = http_request.body(sent_form_body).unwrap();
-        if let Ok(sent_response) = function(&final_request) {
-          let content = sent_response.body();
-          // default: application/octet-stream, but should be provided by the client
-          let wanted_mime = sent_response.mimetype();
-          // default to 200
-          let wanted_status_code = sent_response.status().as_u16() as i32;
-          // default to HTTP/1.1
-          let wanted_version = format!("{:#?}", sent_response.version());
+        let maybe_final_request = http_request.body(sent_form_body);
+        if let Ok(final_request) = maybe_final_request {
+          if let Ok(sent_response) = function(&final_request) {
+            let content = sent_response.body();
+            // default: application/octet-stream, but should be provided by the client
+            let wanted_mime = sent_response.mimetype();
+            // default to 200
+            let wanted_status_code = sent_response.status().as_u16() as i32;
+            // default to HTTP/1.1
+            let wanted_version = format!("{:#?}", sent_response.version());
 
-          let dictionary: id = msg_send![class!(NSMutableDictionary), alloc];
-          let headers: id = msg_send![dictionary, initWithCapacity:1];
-          if let Some(mime) = wanted_mime {
-            let () = msg_send![headers, setObject:NSString::new(mime) forKey: NSString::new("content-type")];
-          }
-          let () = msg_send![headers, setObject:NSString::new(&content.len().to_string()) forKey: NSString::new("content-length")];
-
-          // add headers
-          for (name, value) in sent_response.headers().iter() {
-            let header_key = name.to_string();
-            if let Ok(value) = value.to_str() {
-              let () = msg_send![headers, setObject:NSString::new(value) forKey: NSString::new(&header_key)];
+            let dictionary: id = msg_send![class!(NSMutableDictionary), alloc];
+            let headers: id = msg_send![dictionary, initWithCapacity:1];
+            if let Some(mime) = wanted_mime {
+              let () = msg_send![headers, setObject:NSString::new(mime) forKey: NSString::new("content-type")];
             }
+            let () = msg_send![headers, setObject:NSString::new(&content.len().to_string()) forKey: NSString::new("content-length")];
+
+            // add headers
+            for (name, value) in sent_response.headers().iter() {
+              let header_key = name.to_string();
+              if let Ok(value) = value.to_str() {
+                let () = msg_send![headers, setObject:NSString::new(value) forKey: NSString::new(&header_key)];
+              }
+            }
+
+            let urlresponse: id = msg_send![class!(NSHTTPURLResponse), alloc];
+            let response: id = msg_send![urlresponse, initWithURL:url statusCode: wanted_status_code HTTPVersion:NSString::new(&wanted_version) headerFields:headers];
+            let () = msg_send![task, didReceiveResponse: response];
+
+            // Send data
+            let bytes = content.as_ptr() as *mut c_void;
+            let data: id = msg_send![class!(NSData), alloc];
+            let data: id = msg_send![data, initWithBytes:bytes length:content.len()];
+            let () = msg_send![task, didReceiveData: data];
+          } else {
+            let urlresponse: id = msg_send![class!(NSHTTPURLResponse), alloc];
+            let response: id = msg_send![urlresponse, initWithURL:url statusCode:404 HTTPVersion:NSString::new("HTTP/1.1") headerFields:null::<c_void>()];
+            let () = msg_send![task, didReceiveResponse: response];
           }
-
-          let urlresponse: id = msg_send![class!(NSHTTPURLResponse), alloc];
-          let response: id = msg_send![urlresponse, initWithURL:url statusCode: wanted_status_code HTTPVersion:NSString::new(&wanted_version) headerFields:headers];
-          let () = msg_send![task, didReceiveResponse: response];
-
-          // Send data
-          let bytes = content.as_ptr() as *mut c_void;
-          let data: id = msg_send![class!(NSData), alloc];
-          let data: id = msg_send![data, initWithBytes:bytes length:content.len()];
-          let () = msg_send![task, didReceiveData: data];
         } else {
           let urlresponse: id = msg_send![class!(NSHTTPURLResponse), alloc];
           let response: id = msg_send![urlresponse, initWithURL:url statusCode:404 HTTPVersion:NSString::new("HTTP/1.1") headerFields:null::<c_void>()];
           let () = msg_send![task, didReceiveResponse: response];
         }
+
         // Finish
         let () = msg_send![task, didFinish];
       }
