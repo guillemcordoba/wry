@@ -109,6 +109,10 @@ impl InnerWebView {
     extern "C" fn start_task(this: &Object, _: Sel, _webview: id, task: id) {
       unsafe {
 
+        // Get url request
+        let request: id = msg_send![task, request];
+        let url: id = msg_send![request, URL];
+        
         let urlresponse: id = msg_send![class!(NSHTTPURLResponse), alloc];
         let response: id = msg_send![urlresponse, initWithURL:url statusCode:404 HTTPVersion:NSString::new("HTTP/1.1") headerFields:null::<c_void>()];
         let () = msg_send![task, didReceiveResponse: response];
